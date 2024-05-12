@@ -1,0 +1,4 @@
+[submodule "third-party/opencv"]
+	path = third-party/opencv
+	url = https://github.com/Vop2elToolkit/opencv.git
+	branch = feat/RansacReturnsAllInliers
