@@ -480,63 +480,70 @@ void Vop2elMatcher::GetMatches(std::vector<Vop2el::Match>& matches)
                                             this->CameraParams.CalibrationMatrix, fundamental);
 
     int numCorrected = 0;
+    bool doContinue = true;
 
     #pragma omp parallel for
     for (int keyPointIdx = 0; keyPointIdx < this->PairWithKeyPoints.ActualLeftKeyPoints->size(); ++keyPointIdx)
     {
-        // Check wether keyPoint patch is inside the image
-        cv::Point2f keyPoint = this->PairWithKeyPoints.ActualLeftKeyPoints->at(keyPointIdx);
-
-        if (!(this->IsKeyPointPatchInImage(keyPoint)))
-           continue;
-
-        cv::Size patchSize(this->Vop2elMatcherParams.HalfPatchCols * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
-        cv::Mat referencePatch;
-        cv::getRectSubPix((*this->PairWithKeyPoints.ActualLeftImage), patchSize, keyPoint, referencePatch);
-
-        // Compute epipolar line of the keyPoint in the actual right image and get potential candidates matches
-        double keyPointarr[3] = {keyPoint.x, keyPoint.y, 1};
-        cv::Mat epipolarLine = fundamental * cv::Mat(3, 1, CV_64F, keyPointarr);
-
-        cv::Mat epipolarLineFloat;
-        epipolarLine.convertTo(epipolarLineFloat, CV_32F);
-        cv::Vec3f epipolarLineVec(epipolarLineFloat.at<float>(0), epipolarLineFloat.at<float>(1), epipolarLineFloat.at<float>(2));
-
-        std::vector<PatchWithScore> matches;
-        this->GetStereoCandidatesMatches(referencePatch, keyPoint, epipolarLineVec, matches);
-
-        // If the number of candidates is valid, do the following
-        if (this->IsNumberOfCandidateValid(matches))
+        if (doContinue)
         {
-            std::vector<PatchWithScore> onlyGoodMatches;
-            this->KeepValidStereoCandidates(matches, onlyGoodMatches);
+            // Check wether keyPoint patch is inside the image
+            cv::Point2f keyPoint = this->PairWithKeyPoints.ActualLeftKeyPoints->at(keyPointIdx);
 
-            // Find best match in previous left and right image
-            std::vector<std::pair<cv::Point2f, float>> bestKeyPointPreviousLeft;
-            std::vector<std::pair<cv::Point2f, float>> bestKeyPointPreviousRight;
-            this->GetMatchesPreviousFrame(referencePatch, keyPoint, onlyGoodMatches, bestKeyPointPreviousLeft, bestKeyPointPreviousRight);
+            if (!(this->IsKeyPointPatchInImage(keyPoint)))
+            continue;
 
-            // Do the following if best match exist
-            int idxBestKeyPoint = this->GetBestMatch(onlyGoodMatches, bestKeyPointPreviousLeft, bestKeyPointPreviousRight);
+            cv::Size patchSize(this->Vop2elMatcherParams.HalfPatchCols * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
+            cv::Mat referencePatch;
+            cv::getRectSubPix((*this->PairWithKeyPoints.ActualLeftImage), patchSize, keyPoint, referencePatch);
 
-            if (idxBestKeyPoint != -1)
+            // Compute epipolar line of the keyPoint in the actual right image and get potential candidates matches
+            double keyPointarr[3] = {keyPoint.x, keyPoint.y, 1};
+            cv::Mat epipolarLine = fundamental * cv::Mat(3, 1, CV_64F, keyPointarr);
+
+            cv::Mat epipolarLineFloat;
+            epipolarLine.convertTo(epipolarLineFloat, CV_32F);
+            cv::Vec3f epipolarLineVec(epipolarLineFloat.at<float>(0), epipolarLineFloat.at<float>(1), epipolarLineFloat.at<float>(2));
+
+            std::vector<PatchWithScore> matches;
+            this->GetStereoCandidatesMatches(referencePatch, keyPoint, epipolarLineVec, matches);
+
+            // If the number of candidates is valid, do the following
+            if (this->IsNumberOfCandidateValid(matches))
             {
-                if (matches[idxBestKeyPoint].Type == PatchType::CORRECTED)
+                std::vector<PatchWithScore> onlyGoodMatches;
+                this->KeepValidStereoCandidates(matches, onlyGoodMatches);
+
+                // Find best match in previous left and right image
+                std::vector<std::pair<cv::Point2f, float>> bestKeyPointPreviousLeft;
+                std::vector<std::pair<cv::Point2f, float>> bestKeyPointPreviousRight;
+                this->GetMatchesPreviousFrame(referencePatch, keyPoint, onlyGoodMatches, bestKeyPointPreviousLeft, bestKeyPointPreviousRight);
+
+                // Do the following if best match exist
+                int idxBestKeyPoint = this->GetBestMatch(onlyGoodMatches, bestKeyPointPreviousLeft, bestKeyPointPreviousRight);
+
+                if (idxBestKeyPoint != -1)
                 {
-                    std::unique_lock<std::shared_mutex> lock(mutexCorrectedPatches);
-                    numCorrected++;
-                }
+                    if (matches[idxBestKeyPoint].Type == PatchType::CORRECTED)
+                    {
+                        std::unique_lock<std::shared_mutex> lock(mutexCorrectedPatches);
+                        numCorrected++;
+                    }
 
-                Vop2el::Match match{keyPoint, matches[idxBestKeyPoint].KeyPoint, bestKeyPointPreviousLeft[idxBestKeyPoint].first,
-                            bestKeyPointPreviousRight[idxBestKeyPoint].first};
-                {
-                    std::unique_lock<std::shared_mutex> lock(mtutexNewValidMatch);
+                    Vop2el::Match match{keyPoint, matches[idxBestKeyPoint].KeyPoint, bestKeyPointPreviousLeft[idxBestKeyPoint].first,
+                                bestKeyPointPreviousRight[idxBestKeyPoint].first};
+                    {
+                        std::unique_lock<std::shared_mutex> lock(mtutexNewValidMatch);
 
-                    matchesAndIdx.emplace_back(std::make_pair<>(match, keyPointIdx));
+                        matchesAndIdx.emplace_back(std::make_pair<>(match, keyPointIdx));
 
-                    float keyPointMovement = cv::norm(match.PreviousLeft - match.ActualLeft);
-                    if (keyPointMovement <= 1.f)
-                        ++this->NumFixedKeyPoints;
+                        float keyPointMovement = cv::norm(match.PreviousLeft - match.ActualLeft);
+                        if (keyPointMovement <= 1.f)
+                            ++this->NumFixedKeyPoints;
+
+                        if (matchesAndIdx.size() > this->Vop2elMatcherParams.MaxNumberOfMatches)
+                            doContinue = false;
+                    }
                 }
             }
         }

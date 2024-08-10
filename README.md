@@ -48,7 +48,7 @@ To run this project on linux, use the following command:
 Notes:
 - Users should rely on parameters ini file provided in test folder.
 - Using ground plane adds additional overhead to processing time and requires precise values for normal vector and distance to ground plane, users should try running the program without it first and then test with it if the results are not satisfactory.  
-- To improve processing time, user can reduce max_key_points_per_bin or/and (half_horizontal_search, half_vertical_search).
+- To improve processing time, the simplest way is to reduce value of max_number_matches in parameters file.
 - In the estimated poses text file, each pose will be written as a single line representing a row-major 3x4 matrix.
 - The last argument mentioned in the command above is optional. When provided, it is used solely to compute translation and rotation error metrics between the estimated and ground truth poses.
 

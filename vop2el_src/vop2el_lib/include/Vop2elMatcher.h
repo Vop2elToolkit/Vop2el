@@ -51,6 +51,7 @@ struct Match
 
 struct Vop2elMatcherParameters
 {
+    int MaxNumberOfMatches = -1; // Maximum number of matches used to compute relative pose, -1 to compute and use all matches
     float NccTreshold = 0.7f; // normalized cross-correlation score above which the match is considered valid
     int EpipolarLineSearchInterval = 100; // interval of search on the epipolar line, depends on the speed of the robot
     int MaxStereoPointsToProcess = 10; // maximum number of stereo keypoints candidates to search their matches in previous frame

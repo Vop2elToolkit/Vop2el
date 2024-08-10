@@ -104,6 +104,7 @@ void Utils::GenerateVop2elParamsFromIniFile(const std::string& iniFile,
     else
         vop2elParameters.UseTukeyEstimator = false;
 
+    vop2elParameters.Vop2elMatcherParams.MaxNumberOfMatches = std::stof(ini["vop2el_matcher_parameters"]["max_number_matches"]);
     vop2elParameters.Vop2elMatcherParams.NccTreshold = std::stof(ini["vop2el_matcher_parameters"]["ncc_treshold"]);
     vop2elParameters.Vop2elMatcherParams.EpipolarLineSearchInterval = std::stoi(ini["vop2el_matcher_parameters"]["epipolar_line_search_interval"]);
     vop2elParameters.Vop2elMatcherParams.MaxStereoPointsToProcess = std::stoi(ini["vop2el_matcher_parameters"]["max_stereo_points_to_process"]);
