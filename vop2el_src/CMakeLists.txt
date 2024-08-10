@@ -5,6 +5,8 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O3")
 
 project(VOP2EL)
 
+option(ENABLE_RERUN_VISUALIZATION "Enable rerun visualization" OFF)
+
 set(VOP2EL_SOURCES
     vop2el_lib/src/Vop2elAlgorithm.cpp
     vop2el_lib/src/StereoImagesHandler.cpp
@@ -33,6 +35,10 @@ find_package(OpenCV REQUIRED)
 include_directories(${OpenCV_INCLUDE_DIRS})
 target_link_libraries(Vop2elAlgorithm ${OpenCV_LIBS})
 
+if(ENABLE_RERUN_VISUALIZATION)
+    find_package(rerun_sdk REQUIRED)
+endif()
+
 install(DIRECTORY vop2el_lib/include DESTINATION ${CMAKE_BINARY_DIR}/install/include)
 
 install(TARGETS Vop2elAlgorithm
@@ -41,9 +47,15 @@ install(TARGETS Vop2elAlgorithm
         RUNTIME DESTINATION ${CMAKE_BINARY_DIR}/install/bin
 )
 
+set(VOP2EL_TESTER_SOURCES test/main.cpp
+    test/Utils.cpp)
+
+if(ENABLE_RERUN_VISUALIZATION)
+    list(APPEND VOP2EL_TESTER_SOURCES test/RerunVisualizer.cpp)
+endif()
+
 add_executable(Vop2elTester
-            test/main.cpp
-            test/Utils.cpp
+            ${VOP2EL_TESTER_SOURCES}
 )
 set_target_properties(Vop2elTester PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/../bin
@@ -51,4 +63,10 @@ set_target_properties(Vop2elTester PROPERTIES
 
 target_include_directories(Vop2elTester PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/test)
 target_include_directories(Vop2elTester PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vop2el_lib/include)
+
+if(ENABLE_RERUN_VISUALIZATION)
+    add_compile_definitions(RERUN_VISUALIZATION)
+    target_link_libraries(Vop2elTester rerun_sdk)
+endif()
+
 target_link_libraries(Vop2elTester Vop2elAlgorithm)

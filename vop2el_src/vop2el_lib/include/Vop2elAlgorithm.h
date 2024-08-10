@@ -65,6 +65,8 @@ class Vop2elAlgorithm
                                 Eigen::Affine3d& relativeTransform);
         // Get absolute poses
         const std::vector<Eigen::Affine3d>& GetPoses() const { return this->AbsolutePoses; }
+        // Get current absolute pose
+        Eigen::Affine3d GetCurrentAbsPose() const { return this->AbsolutePoses.back(); }
 
     private:
         // Frames handler
