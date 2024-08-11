@@ -348,6 +348,15 @@ void Vop2elAlgorithm::EstimateInitScaledRelativeTransform(Eigen::Affine3d& initi
 }
 
 //-------------------------------------------------------------------------------------------
+void Vop2elAlgorithm::ProcessNumMatchesInsufficient()
+{
+    std::cerr << "[WARNING] The number of computed matches is insufficient. We will extrapolate." << std::endl;
+    this->RelativePoses.push_back(this->RelativePoses.back());
+    Eigen::Affine3d absolutePose = this->AbsolutePoses.back() * this->RelativePoses.back();
+    this->AbsolutePoses.push_back(absolutePose);
+}
+
+//-------------------------------------------------------------------------------------------
 void Vop2elAlgorithm::ProcessStereoFrame(const std::string& leftImage,
                                         const std::string& rightImage,
                                         Eigen::Affine3d& relativeTransform)
@@ -379,7 +388,10 @@ void Vop2elAlgorithm::ProcessStereoFrame(const std::string& leftImage,
         std::cout << "Number of matches: " <<  matches.size() << std::endl;
 
         if (matches.size() < 10)
-            std::runtime_error("[ERROR] The matcher didn't succeed to compute enough matches");
+        {
+            this->ProcessNumMatchesInsufficient();
+            return;
+        }
 
         double ratioOfFixedKeyPoints = static_cast<double>(NumberFixedKeyPoints) / static_cast<double>(matches.size());
         if (ratioOfFixedKeyPoints > 0.6)
