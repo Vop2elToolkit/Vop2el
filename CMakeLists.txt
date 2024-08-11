@@ -32,7 +32,7 @@ ExternalProject_Add(opencv
                -DBUILD_opencv_stitching=OFF
                -DBUILD_opencv_ts=OFF
 
-    BUILD_COMMAND make -j4
+    BUILD_COMMAND cmake --build . -j 4
 )
 
 # Add vop2el library and test
@@ -43,5 +43,5 @@ ExternalProject_Add(vop2el_lib
                -DBUILD_SHARED_LIBS=ON
                
     DEPENDS opencv
-    BUILD_COMMAND make -j4
+    BUILD_COMMAND cmake --build . -j 4
 )

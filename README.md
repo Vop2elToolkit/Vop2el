@@ -31,7 +31,7 @@ mkdir ../Vop2el-build && cd ../Vop2el-build
 
 cmake ../Vop2el
 
-make
+cmake --build .
 ```
 
 ## Run
