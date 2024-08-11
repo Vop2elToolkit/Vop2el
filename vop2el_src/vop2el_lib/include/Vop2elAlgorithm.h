@@ -111,5 +111,7 @@ class Vop2elAlgorithm
         double EstimateInitScale(const Eigen::Affine3d& transformPreviousActual) const;
         // Estimate intial scaled relative transform
         void EstimateInitScaledRelativeTransform(Eigen::Affine3d& initialRelativeTransform) const;
+        // Extrapolate relative/absolute pose when number of valid matches computed by the matcher is insufficient
+        void ProcessNumMatchesInsufficient();
 };
 }
