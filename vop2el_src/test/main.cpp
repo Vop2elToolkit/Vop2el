@@ -28,6 +28,10 @@
 #include "Vop2elAlgorithm.h"
 #include "Utils.h"
 
+#ifdef RERUN_VISUALIZATION
+#include "RerunVisualizer.h"
+#endif
+
 int main(int argc, char** argv)
 {
     bool haveGroundTruth = false;
@@ -78,6 +82,10 @@ int main(int argc, char** argv)
     double totalRadPerMeterError = 0.0;
     int numFramesToProcess = leftImagesPath.size();
 
+#ifdef RERUN_VISUALIZATION
+    RerunVisualizer rerunVisualizer;
+#endif
+
     for (int frameIdx = 0; frameIdx < numFramesToProcess; ++frameIdx)
     {
         std::cout << "Processing frame: " << frameIdx << std::endl;
@@ -87,6 +95,9 @@ int main(int argc, char** argv)
             Eigen::Affine3d computedRelativeTransform;
             // Process frame
             algorithm.ProcessStereoFrame(leftImagesPath[frameIdx], rightImagesPath[frameIdx], computedRelativeTransform);
+#ifdef RERUN_VISUALIZATION
+            rerunVisualizer.StreamFrame(leftImagesPath[frameIdx], rightImagesPath[frameIdx], algorithm.GetCurrentAbsPose());
+#endif
             continue;
         }
 
@@ -97,6 +108,9 @@ int main(int argc, char** argv)
         algorithm.ProcessStereoFrame(leftImagesPath[frameIdx], rightImagesPath[frameIdx], computedRelativeTransform);
         auto timeEnd = std::chrono::high_resolution_clock::now();
         std::cout << "Time total is: " << std::chrono::duration<double, std::milli>(timeEnd - timeStart).count() << std::endl;
+#ifdef RERUN_VISUALIZATION
+        rerunVisualizer.StreamFrame(leftImagesPath[frameIdx], rightImagesPath[frameIdx], algorithm.GetCurrentAbsPose());
+#endif
 
         // If have ground truth, compute metrics
         if (haveGroundTruth)
