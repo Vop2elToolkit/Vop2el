@@ -163,6 +163,8 @@ void Vop2elMatcher::ComputeNccOnEpipolarLine(const cv::Mat& referencePatch,
     int startColumnInt = static_cast<int>(startColumn);
     int endColumnInt = static_cast<int>(endColumn);
 
+    cv::Size patchSize(this->Vop2elMatcherParams.HalfPatchCols * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
+    cv::Mat candidatePatches;
     for (int keyPointColumn = startColumnInt; keyPointColumn < endColumnInt; ++keyPointColumn)
     {
         float keyPointColumnFloat = static_cast<float>(keyPointColumn);
@@ -173,19 +175,31 @@ void Vop2elMatcher::ComputeNccOnEpipolarLine(const cv::Mat& referencePatch,
             continue;
 
         cv::Mat candidatePatch;
-        cv::Size patchSize(this->Vop2elMatcherParams.HalfPatchCols * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
         cv::getRectSubPix(targetImage, patchSize, patchCenter, candidatePatch);
 
         if (this->IsPatchVarianceZero(candidatePatch))
             continue;
 
-        cv::Mat nVCCScore;
-        cv::matchTemplate(referencePatch, candidatePatch, nVCCScore, cv::TM_CCOEFF_NORMED);
+        if (candidatePatches.empty())
+            candidatePatches = candidatePatch;
+        else
+        {
+            cv::Mat tempPatches;
+            cv::hconcat(candidatePatches, candidatePatch, tempPatches);
+            candidatePatches = tempPatches;
+        }
         PatchWithScore validMatch;
         validMatch.KeyPoint = cv::Point2f(keyPointColumnFloat, keyPointRow);
-        validMatch.Score = nVCCScore.at<float>(0);
         validMatch.Type = patchType;
-        matches.push_back(validMatch);
+        matches.emplace_back(validMatch);
+    }
+
+    if (!candidatePatches.empty())
+    {
+        cv::Mat nVCCScore;
+        cv::matchTemplate(referencePatch, candidatePatches, nVCCScore, cv::TM_CCOEFF_NORMED);
+        for (int matchIdx = 0; matchIdx < matches.size(); ++matchIdx)
+            matches[matchIdx].Score = nVCCScore.at<float>(patchSize.width * matchIdx);
     }
 }
 
@@ -242,7 +256,9 @@ void Vop2elMatcher::SearchMatchesPreviousFrame(const cv::Mat& referencePatch,
         return;
     }
 
-    std::vector<std::pair<cv::Point2f, float>> nVCCScores;
+    cv::Size patchSize(this->Vop2elMatcherParams.HalfPatchCols * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
+    cv::Mat candidatePatches;
+    std::vector<std::pair<cv::Point2f, float>> nVCCScoresAndKeyPoints;
     for (int rowIdx = -this->Vop2elMatcherParams.HalfVerticalSearch; rowIdx <= this->Vop2elMatcherParams.HalfVerticalSearch; ++rowIdx)
     {
         for (int colIdx = -this->Vop2elMatcherParams.HalfHorizontalSearch; colIdx <= this->Vop2elMatcherParams.HalfHorizontalSearch; ++colIdx)
@@ -252,25 +268,35 @@ void Vop2elMatcher::SearchMatchesPreviousFrame(const cv::Mat& referencePatch,
                 continue;
 
             cv::Mat candidatePatch;
-            cv::Size patchSize(this->Vop2elMatcherParams.HalfPatchCols * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
             cv::getRectSubPix(targetImage, patchSize, keyPointCenter, candidatePatch);
 
             if (this->IsPatchVarianceZero(candidatePatch))
                 continue;
 
-            cv::Mat nVCCScore;
-            cv::matchTemplate(referencePatch, candidatePatch, nVCCScore, cv::TM_CCOEFF_NORMED);
-            nVCCScores.push_back(std::pair(keyPointCenter, nVCCScore.at<float>(0)));
+            if (candidatePatches.empty())
+                candidatePatches = candidatePatch;
+            else
+            {
+                cv::Mat tempPatches;
+                cv::hconcat(candidatePatches, candidatePatch, tempPatches);
+                candidatePatches = tempPatches;
+            }
+            nVCCScoresAndKeyPoints.emplace_back(std::pair(keyPointCenter, 0.f));
         }
     }
 
-    if (nVCCScores.size() == 0)
+    if (nVCCScoresAndKeyPoints.size() == 0)
     {
         optimalMatch = std::pair<cv::Point2f, float>(cv::Point2f(-1.f, -1.f), std::numeric_limits<float>::lowest());
         return;
     }
 
-    auto optimalMatchItr = std::max_element(nVCCScores.begin(), nVCCScores.end(),
+    cv::Mat nVCCScores;
+    cv::matchTemplate(candidatePatches, referencePatch, nVCCScores, cv::TM_CCOEFF_NORMED);
+    for (int nVCCScoreAndKeyPointIdx = 0; nVCCScoreAndKeyPointIdx < nVCCScoresAndKeyPoints.size(); ++nVCCScoreAndKeyPointIdx)
+        nVCCScoresAndKeyPoints[nVCCScoreAndKeyPointIdx].second = nVCCScores.at<float>(patchSize.width * nVCCScoreAndKeyPointIdx);
+
+    auto optimalMatchItr = std::max_element(nVCCScoresAndKeyPoints.begin(), nVCCScoresAndKeyPoints.end(),
     [](const std::pair<cv::Point2f, float>& firstScore, const std::pair<cv::Point2f, float>& secondScore)
     {
         return (firstScore.second < secondScore.second);
