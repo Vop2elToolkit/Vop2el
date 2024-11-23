@@ -516,7 +516,7 @@ void Vop2elMatcher::GetMatches(std::vector<Vop2el::Match>& matches)
     int numCorrected = 0;
     bool doContinue = true;
 
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(dynamic)
     for (int keyPointIdx = 0; keyPointIdx < this->PairWithKeyPoints.ActualLeftKeyPoints->size(); ++keyPointIdx)
     {
         if (doContinue)
