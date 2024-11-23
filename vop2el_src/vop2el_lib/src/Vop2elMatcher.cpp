@@ -408,18 +408,14 @@ void Vop2elMatcher::GetMatchPreviousFrameOriginal(const cv::Mat& referencePatch,
 
     cv::Point2f triangProjectedPreviousRightPoint(static_cast<float>(triangProjectedPreviousRight.at<double>(0)),
                                                 static_cast<float>(triangProjectedPreviousRight.at<double>(1)));
-    std::pair<cv::Point2f, float> candidateMatchPreviousLeft;
     this->SearchMatchesPreviousFrame(referencePatch, *this->PairWithKeyPoints.PreviousLeftImage,
-                                    triangProjectedPreviousLeftPoint, candidateMatchPreviousLeft);
+                                    triangProjectedPreviousLeftPoint, bestKeyPointPreviousLeft);
 
-    bestKeyPointPreviousLeft = std::move(candidateMatchPreviousLeft);
+    if ((bestKeyPointPreviousLeft.second <= this->Vop2elMatcherParams.NccTreshold))
+        return;
 
-    std::pair<cv::Point2f, float> candidateMatchPreviousRight;
     this->SearchMatchesPreviousFrame(referencePatch, *this->PairWithKeyPoints.PreviousRightImage,
-                                    triangProjectedPreviousRightPoint, candidateMatchPreviousRight);
-
-    bestKeyPointPreviousRight = std::move(candidateMatchPreviousRight);
-
+                                    triangProjectedPreviousRightPoint, bestKeyPointPreviousRight);
 }
 
 //---------------------------------------------------------------------------------------
@@ -434,20 +430,16 @@ void Vop2elMatcher::GetMatchPreviousFrameCorrected(const cv::Mat& correctedPatch
 
     cv::Point2f reprojectedKeyPointPreviousLeft;
     this->CorrectorActualRightPreviousLeft->GetKeyPointByPlaneProjection(keyPointActual, reprojectedKeyPointPreviousLeft);
-
-    std::pair<cv::Point2f, float> optimalMatchPreviousLeft;
     this->SearchMatchesPreviousFrame(correctedPatchPreviousLeft, *this->PairWithKeyPoints.PreviousLeftImage,
-                                    reprojectedKeyPointPreviousLeft, optimalMatchPreviousLeft);
-    bestKeyPointPreviousLeft = std::move(optimalMatchPreviousLeft);
+                                    reprojectedKeyPointPreviousLeft, bestKeyPointPreviousLeft);
+
+    if ((bestKeyPointPreviousLeft.second <= this->Vop2elMatcherParams.NccTreshold))
+        return;
 
     cv::Point2f reprojectedKeyPointPreviousRight;
     this->CorrectorActualRightPreviousRight->GetKeyPointByPlaneProjection(keyPointActual, reprojectedKeyPointPreviousRight);
-
-
-    std::pair<cv::Point2f, float> optimalMatchPreviousRight;
     this->SearchMatchesPreviousFrame(correctedPatchPreviousRight, *this->PairWithKeyPoints.PreviousRightImage,
-                                    reprojectedKeyPointPreviousRight, optimalMatchPreviousRight);
-    bestKeyPointPreviousRight = std::move(optimalMatchPreviousRight);
+                                    reprojectedKeyPointPreviousRight, bestKeyPointPreviousRight);
 }
 
 //---------------------------------------------------------------------------------------
