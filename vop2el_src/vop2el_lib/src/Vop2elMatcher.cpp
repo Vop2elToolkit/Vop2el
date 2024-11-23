@@ -140,15 +140,16 @@ bool Vop2elMatcher::IsKeyPointInImage(const cv::Point2f& keyPoint) const
     return true;
 }
 
+
 //---------------------------------------------------------------------------------------
-void Vop2elMatcher::ComputeNccOnEpipolarLine(const cv::Mat& referencePatch,
-                                            const cv::Mat& targetImage,
-                                            PatchType patchType,
-                                            const cv::Point2f& keyPoint,
-                                            const cv::Vec3f& epipolarLine,
-                                            std::vector<PatchWithScore>& matches) const
+void Vop2elMatcher::ComputeCandidatesOnEpipolarLine(const cv::Mat& targetImage,
+                                                    const cv::Point2f& keyPoint,
+                                                    const cv::Vec3f& epipolarLine,
+                                                    std::vector<PatchWithScore>& matches,
+                                                    cv::Mat& candidatePatches) const
 {
     matches.clear();
+    candidatePatches.release();
     if (std::abs(epipolarLine[1]) < 1e-6f)
         return;
 
@@ -164,7 +165,6 @@ void Vop2elMatcher::ComputeNccOnEpipolarLine(const cv::Mat& referencePatch,
     int endColumnInt = static_cast<int>(endColumn);
 
     cv::Size patchSize(this->Vop2elMatcherParams.HalfPatchCols * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
-    cv::Mat candidatePatches;
     for (int keyPointColumn = startColumnInt; keyPointColumn < endColumnInt; ++keyPointColumn)
     {
         float keyPointColumnFloat = static_cast<float>(keyPointColumn);
@@ -190,16 +190,26 @@ void Vop2elMatcher::ComputeNccOnEpipolarLine(const cv::Mat& referencePatch,
         }
         PatchWithScore validMatch;
         validMatch.KeyPoint = cv::Point2f(keyPointColumnFloat, keyPointRow);
-        validMatch.Type = patchType;
         matches.emplace_back(validMatch);
     }
+}
 
+//---------------------------------------------------------------------------------------
+void Vop2elMatcher::ComputeNccOnEpipolarLine(const cv::Mat& referencePatch,
+                                            PatchType patchType,
+                                            const cv::Mat& candidatePatches,
+                                            std::vector<PatchWithScore>& matches) const
+{
     if (!candidatePatches.empty())
     {
+        cv::Size patchSize(this->Vop2elMatcherParams.HalfPatchCols * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
         cv::Mat nVCCScore;
         cv::matchTemplate(referencePatch, candidatePatches, nVCCScore, cv::TM_CCOEFF_NORMED);
         for (int matchIdx = 0; matchIdx < matches.size(); ++matchIdx)
+        {
             matches[matchIdx].Score = nVCCScore.at<float>(patchSize.width * matchIdx);
+            matches[matchIdx].Type = patchType;
+        }
     }
 }
 
@@ -341,9 +351,9 @@ void Vop2elMatcher::GetStereoCandidatesMatches(const cv::Mat& referencePatch,
                                             std::vector<PatchWithScore>& matches) const
 {
     matches.clear();
-
-    this->ComputeNccOnEpipolarLine(referencePatch, *this->PairWithKeyPoints.ActualRightImage,
-                                PatchType::ORIGINAL, keyPoint, epipolarLine, matches);
+    cv::Mat candidatePatches;
+    this->ComputeCandidatesOnEpipolarLine(*this->PairWithKeyPoints.ActualRightImage, keyPoint, epipolarLine, matches, candidatePatches);
+    this->ComputeNccOnEpipolarLine(referencePatch, PatchType::ORIGINAL, candidatePatches, matches);
 
     if (this->CorrectorActualLeftActualRight)
     {
@@ -351,10 +361,8 @@ void Vop2elMatcher::GetStereoCandidatesMatches(const cv::Mat& referencePatch,
         this->CorrectorActualLeftActualRight->GetPatchPerspectiveCorrected(keyPoint, correctedPatch);
         if (correctedPatch.size() != cv::Size(0, 0) && !(this->IsPatchVarianceZero(correctedPatch)))
         {
-            std::vector<PatchWithScore> matchesPerspectiveCorrected;
-            this->ComputeNccOnEpipolarLine(correctedPatch, *this->PairWithKeyPoints.ActualRightImage,
-                                        PatchType::CORRECTED, keyPoint, epipolarLine, matchesPerspectiveCorrected);
-
+            std::vector<PatchWithScore> matchesPerspectiveCorrected = matches;
+            this->ComputeNccOnEpipolarLine(correctedPatch, PatchType::CORRECTED, candidatePatches, matchesPerspectiveCorrected);
             matches.insert(matches.end(), matchesPerspectiveCorrected.begin(), matchesPerspectiveCorrected.end());
         }
     }
@@ -400,18 +408,14 @@ void Vop2elMatcher::GetMatchPreviousFrameOriginal(const cv::Mat& referencePatch,
 
     cv::Point2f triangProjectedPreviousRightPoint(static_cast<float>(triangProjectedPreviousRight.at<double>(0)),
                                                 static_cast<float>(triangProjectedPreviousRight.at<double>(1)));
-    std::pair<cv::Point2f, float> candidateMatchPreviousLeft;
     this->SearchMatchesPreviousFrame(referencePatch, *this->PairWithKeyPoints.PreviousLeftImage,
-                                    triangProjectedPreviousLeftPoint, candidateMatchPreviousLeft);
+                                    triangProjectedPreviousLeftPoint, bestKeyPointPreviousLeft);
 
-    bestKeyPointPreviousLeft = std::move(candidateMatchPreviousLeft);
+    if ((bestKeyPointPreviousLeft.second <= this->Vop2elMatcherParams.NccTreshold))
+        return;
 
-    std::pair<cv::Point2f, float> candidateMatchPreviousRight;
     this->SearchMatchesPreviousFrame(referencePatch, *this->PairWithKeyPoints.PreviousRightImage,
-                                    triangProjectedPreviousRightPoint, candidateMatchPreviousRight);
-
-    bestKeyPointPreviousRight = std::move(candidateMatchPreviousRight);
-
+                                    triangProjectedPreviousRightPoint, bestKeyPointPreviousRight);
 }
 
 //---------------------------------------------------------------------------------------
@@ -426,20 +430,16 @@ void Vop2elMatcher::GetMatchPreviousFrameCorrected(const cv::Mat& correctedPatch
 
     cv::Point2f reprojectedKeyPointPreviousLeft;
     this->CorrectorActualRightPreviousLeft->GetKeyPointByPlaneProjection(keyPointActual, reprojectedKeyPointPreviousLeft);
-
-    std::pair<cv::Point2f, float> optimalMatchPreviousLeft;
     this->SearchMatchesPreviousFrame(correctedPatchPreviousLeft, *this->PairWithKeyPoints.PreviousLeftImage,
-                                    reprojectedKeyPointPreviousLeft, optimalMatchPreviousLeft);
-    bestKeyPointPreviousLeft = std::move(optimalMatchPreviousLeft);
+                                    reprojectedKeyPointPreviousLeft, bestKeyPointPreviousLeft);
+
+    if ((bestKeyPointPreviousLeft.second <= this->Vop2elMatcherParams.NccTreshold))
+        return;
 
     cv::Point2f reprojectedKeyPointPreviousRight;
     this->CorrectorActualRightPreviousRight->GetKeyPointByPlaneProjection(keyPointActual, reprojectedKeyPointPreviousRight);
-
-
-    std::pair<cv::Point2f, float> optimalMatchPreviousRight;
     this->SearchMatchesPreviousFrame(correctedPatchPreviousRight, *this->PairWithKeyPoints.PreviousRightImage,
-                                    reprojectedKeyPointPreviousRight, optimalMatchPreviousRight);
-    bestKeyPointPreviousRight = std::move(optimalMatchPreviousRight);
+                                    reprojectedKeyPointPreviousRight, bestKeyPointPreviousRight);
 }
 
 //---------------------------------------------------------------------------------------
@@ -508,7 +508,7 @@ void Vop2elMatcher::GetMatches(std::vector<Vop2el::Match>& matches)
     int numCorrected = 0;
     bool doContinue = true;
 
-    #pragma omp parallel for
+    #pragma omp parallel for schedule(dynamic)
     for (int keyPointIdx = 0; keyPointIdx < this->PairWithKeyPoints.ActualLeftKeyPoints->size(); ++keyPointIdx)
     {
         if (doContinue)

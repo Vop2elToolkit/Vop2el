@@ -115,11 +115,15 @@ class Vop2elMatcher
         // Compute normalized cross-correlation of a patch from reference image
         // on the epipolar line of target image
         void ComputeNccOnEpipolarLine(const cv::Mat& referencePatch,
-                                    const cv::Mat& targetImage,
                                     PatchType patchType,
-                                    const cv::Point2f& KeyPoint,
-                                    const cv::Vec3f& epipolarLine,
+                                    const cv::Mat& candidatePatches,
                                     std::vector<PatchWithScore>& matches) const;
+        // Compute valid candidates patches on epipolar line
+        void ComputeCandidatesOnEpipolarLine(const cv::Mat& targetImage,
+                                            const cv::Point2f& keyPoint,
+                                            const cv::Vec3f& epipolarLine,
+                                            std::vector<PatchWithScore>& matches,
+                                            cv::Mat& candidatePatches) const;
         // Check whether the difference between the highest and the lowest ncc score
         // is bigger than a threshold which means that the keypoint is not ambigious
         bool IsNumberOfCandidateValid(const std::vector<PatchWithScore>& matches) const;
