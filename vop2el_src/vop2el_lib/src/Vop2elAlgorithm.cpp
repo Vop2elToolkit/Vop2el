@@ -18,6 +18,8 @@
  * limitations under the License.
  */
 
+#include <thread>
+
 #include "Vop2elAlgorithm.h"
 #include "Common.h"
 #include "Vop2elCostStructs.h"
@@ -161,6 +163,7 @@ double Vop2elAlgorithm::EstimateInitScale(const Eigen::Affine3d& transformPrevio
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_QR;
+    options.num_threads = std::thread::hardware_concurrency();
     ceres::Solver::Summary summary;
     options.max_num_iterations = this->Vop2elParams.CostFunctionsMaxNumIterations;
     ceres::Solve(options, &problem, &summary);
@@ -213,6 +216,7 @@ void Vop2elAlgorithm::OptimizeEssentielMatrix(const cv::Mat& essentielMatrix,
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_QR;
+    options.num_threads = std::thread::hardware_concurrency();
     options.max_num_iterations = this->Vop2elParams.CostFunctionsMaxNumIterations;
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
@@ -303,6 +307,7 @@ double Vop2elAlgorithm::ComputeScale(const Eigen::Affine3d& transformPreviousAct
 
     ceres::Solver::Options options;
     options.linear_solver_type = ceres::DENSE_QR;
+    options.num_threads = std::thread::hardware_concurrency();
     ceres::Solver::Summary summary;
     options.max_num_iterations = this->Vop2elParams.CostFunctionsMaxNumIterations;
     ceres::Solve(options, &problem, &summary);
