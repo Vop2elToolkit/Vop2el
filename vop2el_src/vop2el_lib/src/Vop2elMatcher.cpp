@@ -332,45 +332,46 @@ void Vop2elMatcher::SearchMatchesPreviousFrame(const cv::Mat& referencePatch,
         return;
     }
 
-    cv::Size patchSize(this->Vop2elMatcherParams.HalfPatchCols * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
-    cv::Mat candidatePatches;
-    std::vector<std::pair<cv::Point2f, float>> nVCCScoresAndKeyPoints;
-    for (int rowIdx = -this->Vop2elMatcherParams.HalfVerticalSearch; rowIdx <= this->Vop2elMatcherParams.HalfVerticalSearch; ++rowIdx)
-    {
-        for (int colIdx = -this->Vop2elMatcherParams.HalfHorizontalSearch; colIdx <= this->Vop2elMatcherParams.HalfHorizontalSearch; ++colIdx)
-        {
-            cv::Point2f keyPointCenter(static_cast<float>(colIdx) + pixTargetImage.x, static_cast<float>(rowIdx) + pixTargetImage.y);
-            if (!(this->IsKeyPointPatchInImage(keyPointCenter)))
-                continue;
+    cv::Size rawRegionSize((this->Vop2elMatcherParams.HalfHorizontalSearch + this->Vop2elMatcherParams.HalfPatchCols) * 2 + 1,
+                        (this->Vop2elMatcherParams.HalfVerticalSearch + this->Vop2elMatcherParams.HalfPatchRows) * 2 + 1);
+    cv::Mat rawCandidateRegion;
+    cv::getRectSubPix(targetImage, rawRegionSize, pixTargetImage, rawCandidateRegion);
+    cv::Rect validRect = this->GetRecInImage(targetImage.size(), rawRegionSize, pixTargetImage);
 
-            cv::Mat candidatePatch;
-            cv::getRectSubPix(targetImage, patchSize, keyPointCenter, candidatePatch);
-
-            if (this->IsPatchVarianceZero(candidatePatch))
-                continue;
-
-            if (candidatePatches.empty())
-                candidatePatches = candidatePatch;
-            else
-            {
-                cv::Mat tempPatches;
-                cv::hconcat(candidatePatches, candidatePatch, tempPatches);
-                candidatePatches = tempPatches;
-            }
-            nVCCScoresAndKeyPoints.emplace_back(std::pair(keyPointCenter, 0.f));
-        }
-    }
-
-    if (nVCCScoresAndKeyPoints.size() == 0)
+    if (validRect.width < (this->Vop2elMatcherParams.HalfPatchCols * 2 + 1) ||
+        validRect.height < (this->Vop2elMatcherParams.HalfPatchRows * 2 + 1))
     {
         optimalMatch = std::pair<cv::Point2f, float>(cv::Point2f(-1.f, -1.f), std::numeric_limits<float>::lowest());
         return;
     }
 
     cv::Mat nVCCScores;
-    cv::matchTemplate(candidatePatches, referencePatch, nVCCScores, cv::TM_CCOEFF_NORMED);
-    for (int nVCCScoreAndKeyPointIdx = 0; nVCCScoreAndKeyPointIdx < nVCCScoresAndKeyPoints.size(); ++nVCCScoreAndKeyPointIdx)
-        nVCCScoresAndKeyPoints[nVCCScoreAndKeyPointIdx].second = nVCCScores.at<float>(patchSize.width * nVCCScoreAndKeyPointIdx);
+    cv::matchTemplate(rawCandidateRegion(validRect), referencePatch, nVCCScores, cv::TM_CCOEFF_NORMED);
+
+    int startRow = validRect.y + this->Vop2elMatcherParams.HalfPatchRows;
+    int endRow = startRow + validRect.height - 2 * this->Vop2elMatcherParams.HalfPatchRows;
+    int startCol = validRect.x + this->Vop2elMatcherParams.HalfPatchCols;
+    int endCol = startCol + validRect.width - 2 * this->Vop2elMatcherParams.HalfPatchCols;
+    int HalfRawRegionSizeX = (rawRegionSize.width - 1) / 2;
+    int HalfRawRegionSizeY = (rawRegionSize.height - 1) / 2;
+
+    std::vector<std::pair<cv::Point2f, float>> nVCCScoresAndKeyPoints;
+    for (int rowIdx = startRow; rowIdx < endRow; ++rowIdx)
+        for (int colIdx = startCol; colIdx < endCol; ++colIdx)
+        {
+            float validNeighborX = pixTargetImage.x + static_cast<float>(colIdx - HalfRawRegionSizeX);
+            float validNeighborY = pixTargetImage.y + static_cast<float>(rowIdx - HalfRawRegionSizeY);
+
+            cv::Point2f validNeighbor(validNeighborX, validNeighborY);
+            float score = nVCCScores.at<float>(rowIdx - startRow, colIdx - startCol);
+            nVCCScoresAndKeyPoints.emplace_back(std::pair(validNeighbor, score));
+        }
+
+    if (nVCCScoresAndKeyPoints.size() == 0)
+    {
+        optimalMatch = std::pair<cv::Point2f, float>(cv::Point2f(-1.f, -1.f), std::numeric_limits<float>::lowest());
+        return;
+    }
 
     auto optimalMatchItr = std::max_element(nVCCScoresAndKeyPoints.begin(), nVCCScoresAndKeyPoints.end(),
     [](const std::pair<cv::Point2f, float>& firstScore, const std::pair<cv::Point2f, float>& secondScore)
