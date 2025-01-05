@@ -97,6 +97,8 @@ class Vop2elMatcher
         Vop2el::Vop2elMatcherParameters Vop2elMatcherParams;
         // Number of keypoints with a very small optical flow
         int NumFixedKeyPoints = 0;
+        // IsExtrinsicRotIdentity is true when extrisic rotation of the stereo camera equals identity, false otherwise
+        bool IsExtrinsicRotIdentity = false;
         // Patch corrector from actual left to actual right image
         std::unique_ptr<Vop2el::PatchCorrector> CorrectorActualLeftActualRight;
         // Patch corrector from actual right to previous left image
@@ -145,6 +147,28 @@ class Vop2elMatcher
                                         const cv::Point2f& keyPoint,
                                         const cv::Vec3f& epipolarLine,
                                         std::vector<PatchWithScore>& matches) const;
+        // Compute valid candidates patches on epipolar line
+        void ComputeCandidatesEpipLine(const cv::Mat& referencePatch,
+                                    const cv::Point2f& keyPoint,
+                                    const cv::Vec3f& epipolarLine,
+                                    std::vector<PatchWithScore>& matches,
+                                    cv::Mat& searchSubImg) const;
+        // Compute valid candidates patches on horizontal epipolar line
+        void ComputeCandidatesEpipLineHorizontal(const cv::Mat& referencePatch,
+                                                const cv::Point2f& keyPoint,
+                                                const cv::Vec3f& epipolarLine,
+                                                std::vector<PatchWithScore>& matches,
+                                                cv::Mat& candidateRegion) const;
+        // Compute valid candidates patches on diagonal epipolar line
+        void ComputeCandidatesEpipLineDiagonal(const cv::Mat& targetImage,
+                                            const cv::Point2f& keyPoint,
+                                            const cv::Vec3f& epipolarLine,
+                                            std::vector<PatchWithScore>& matches,
+                                            cv::Mat& candidatePatches) const;
+        // Extract the portion of the desired patch size that lies within the image
+        cv::Rect GetRecInImage(const cv::Size& imgSize,
+                            const cv::Size& wantedCandidatesSize,
+                            const cv::Point2f& keyPoint) const;
         // Compute matches in previous frame by triangulation/projection, and reprojection/projection
         // on ground plane if the ground plane parameters are given
         void GetMatchesPreviousFrame(const cv::Mat& referencePatch,

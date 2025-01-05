@@ -53,6 +53,10 @@ Vop2elMatcher::Vop2elMatcher(const Vop2el::StereoImagesPairWithKeyPoints& stereo
     this->ProjectionPreviousRight = this->CameraParams.CalibrationMatrix * transformPrevRightActLeft;
 
     this->PreviousActualTransform = transformPreviousActual;
+
+    cv::Mat diffExtrinsicRotIdentity;
+    cv::absdiff(cameraParams.ExtrinsicRotation, cv::Mat::eye(3, 3, CV_64F), diffExtrinsicRotIdentity);
+    this->IsExtrinsicRotIdentity = cv::countNonZero(diffExtrinsicRotIdentity) == 0;
 }
 
 //---------------------------------------------------------------------------------------
@@ -140,9 +144,8 @@ bool Vop2elMatcher::IsKeyPointInImage(const cv::Point2f& keyPoint) const
     return true;
 }
 
-
 //---------------------------------------------------------------------------------------
-void Vop2elMatcher::ComputeCandidatesOnEpipolarLine(const cv::Mat& targetImage,
+void Vop2elMatcher::ComputeCandidatesEpipLineDiagonal(const cv::Mat& targetImage,
                                                     const cv::Point2f& keyPoint,
                                                     const cv::Vec3f& epipolarLine,
                                                     std::vector<PatchWithScore>& matches,
@@ -192,19 +195,55 @@ void Vop2elMatcher::ComputeCandidatesOnEpipolarLine(const cv::Mat& targetImage,
 }
 
 //---------------------------------------------------------------------------------------
+void Vop2elMatcher::ComputeCandidatesEpipLineHorizontal(const cv::Mat& targetImage,
+                                                        const cv::Point2f& keyPoint,
+                                                        const cv::Vec3f& epipolarLine,
+                                                        std::vector<PatchWithScore>& matches,
+                                                        cv::Mat& candidateRegion) const
+{
+    matches.clear();
+    candidateRegion.release();
+    if (std::abs(epipolarLine[1]) < 1e-6f)
+        return;
+
+    cv::Size rawRegionSize(this->Vop2elMatcherParams.EpipolarLineSearchInterval * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
+    cv::Point2f keyPointTargetImg(keyPoint.x, - epipolarLine[2] / epipolarLine[1]);
+    cv::Mat rawCandidateRegion;
+    cv::getRectSubPix(targetImage, rawRegionSize, keyPointTargetImg, rawCandidateRegion);
+    cv::Rect2f validRect = this->GetRecInImage(targetImage.size(), rawRegionSize, keyPointTargetImg);
+
+    if (validRect.width < this->Vop2elMatcherParams.HalfPatchCols * 2 + 1 ||
+        validRect.height < this->Vop2elMatcherParams.HalfPatchRows * 2 + 1)
+        return;
+    candidateRegion = rawCandidateRegion(validRect);
+
+    int startCol = -this->Vop2elMatcherParams.EpipolarLineSearchInterval + validRect.x + this->Vop2elMatcherParams.HalfPatchCols;
+    int endCol = startCol + validRect.width - 2 * this->Vop2elMatcherParams.HalfPatchCols;
+    for (int colIdx = startCol; colIdx < endCol; ++colIdx)
+    {
+        PatchWithScore validMatch;
+        validMatch.KeyPoint = cv::Point2f(keyPointTargetImg.x + static_cast<float>(colIdx), keyPointTargetImg.y);
+        matches.emplace_back(validMatch);
+    }
+}
+
+//---------------------------------------------------------------------------------------
 void Vop2elMatcher::ComputeNccOnEpipolarLine(const cv::Mat& referencePatch,
                                             PatchType patchType,
-                                            const cv::Mat& candidatePatches,
+                                            const cv::Mat& searchSubImg,
                                             std::vector<PatchWithScore>& matches) const
 {
-    if (!candidatePatches.empty())
+    if (!searchSubImg.empty())
     {
         cv::Size patchSize(this->Vop2elMatcherParams.HalfPatchCols * 2 + 1, this->Vop2elMatcherParams.HalfPatchRows * 2 + 1);
         cv::Mat nVCCScore;
-        cv::matchTemplate(referencePatch, candidatePatches, nVCCScore, cv::TM_CCOEFF_NORMED);
+        cv::matchTemplate(searchSubImg, referencePatch, nVCCScore, cv::TM_CCOEFF_NORMED);
         for (int matchIdx = 0; matchIdx < matches.size(); ++matchIdx)
         {
-            matches[matchIdx].Score = nVCCScore.at<float>(patchSize.width * matchIdx);
+            if (this->IsExtrinsicRotIdentity)
+                matches[matchIdx].Score = nVCCScore.at<float>(matchIdx);
+            else
+                matches[matchIdx].Score = nVCCScore.at<float>(patchSize.width * matchIdx);
             matches[matchIdx].Type = patchType;
         }
     }
@@ -249,6 +288,36 @@ void Vop2elMatcher::KeepValidStereoCandidates(const std::vector<PatchWithScore>&
         if (match.Score > this->Vop2elMatcherParams.NccTreshold)
             onlyGoodMatches.push_back(match);
     }
+}
+
+//---------------------------------------------------------------------------------------
+cv::Rect Vop2elMatcher::GetRecInImage(const cv::Size& imgSize,
+                                    const cv::Size& wantedCandidatesSize,
+                                    const cv::Point2f& keyPoint) const
+{
+    float fMinCol = keyPoint.x - static_cast<float>((wantedCandidatesSize.width - 1) / 2);
+    int iMinCol = (fMinCol < 0.f) ? std::abs(static_cast<int>(fMinCol)) + static_cast<float>((std::floor(fMinCol) != fMinCol)) : 0;
+
+    float fMinRow = keyPoint.y - static_cast<float>((wantedCandidatesSize.height - 1) / 2);
+    int iMinRow = (fMinRow < 0.f) ? std::abs(static_cast<int>(fMinRow)) + static_cast<float>((std::floor(fMinRow) != fMinRow)) : 0;
+
+    float fWidth = keyPoint.x + static_cast<float>((wantedCandidatesSize.width - 1) / 2);
+    int iWidth = wantedCandidatesSize.width - iMinCol;
+    if (fWidth > static_cast<float>(this->CameraParams.cols - 1))
+        if (std::floor(fWidth) == fWidth)
+            iWidth = iWidth - (static_cast<int>(fWidth) - (this->CameraParams.cols - 1));
+        else
+            iWidth = iWidth - (static_cast<int>(fWidth) - (this->CameraParams.cols - 1)) - 1;
+
+    float fHeight = keyPoint.y + static_cast<float>((wantedCandidatesSize.height - 1) / 2);
+    int iHeight = wantedCandidatesSize.height - iMinRow;
+    if (fHeight > static_cast<float>(this->CameraParams.rows - 1))
+        if(std::floor(fHeight) == fHeight)
+            iHeight = iHeight - (static_cast<int>(fHeight) - (this->CameraParams.rows - 1));
+        else
+            iHeight = iHeight - (static_cast<int>(fHeight) - (this->CameraParams.rows - 1)) - 1;
+
+    return cv::Rect(iMinCol, iMinRow, iWidth, iHeight);
 }
 
 //---------------------------------------------------------------------------------------
@@ -342,15 +411,30 @@ int Vop2elMatcher::GetBestMatch(const std::vector<PatchWithScore>& matches,
 }
 
 //---------------------------------------------------------------------------------------
+void Vop2elMatcher::ComputeCandidatesEpipLine(const cv::Mat& referencePatch,
+                                            const cv::Point2f& keyPoint,
+                                            const cv::Vec3f& epipolarLine,
+                                            std::vector<PatchWithScore>& matches,
+                                            cv::Mat& searchSubImg) const
+{
+    if (this->IsExtrinsicRotIdentity)
+        this->ComputeCandidatesEpipLineHorizontal(*this->PairWithKeyPoints.ActualRightImage, keyPoint,
+                                            epipolarLine, matches, searchSubImg);
+    else
+        this->ComputeCandidatesEpipLineDiagonal(*this->PairWithKeyPoints.ActualRightImage, keyPoint,
+                                            epipolarLine, matches, searchSubImg);
+}
+
+//---------------------------------------------------------------------------------------
 void Vop2elMatcher::GetStereoCandidatesMatches(const cv::Mat& referencePatch,
                                             const cv::Point2f& keyPoint,
                                             const cv::Vec3f& epipolarLine,
                                             std::vector<PatchWithScore>& matches) const
 {
     matches.clear();
-    cv::Mat candidatePatches;
-    this->ComputeCandidatesOnEpipolarLine(*this->PairWithKeyPoints.ActualRightImage, keyPoint, epipolarLine, matches, candidatePatches);
-    this->ComputeNccOnEpipolarLine(referencePatch, PatchType::ORIGINAL, candidatePatches, matches);
+    cv::Mat searchSubImg;
+    this->ComputeCandidatesEpipLine(*this->PairWithKeyPoints.ActualRightImage, keyPoint, epipolarLine, matches, searchSubImg);
+    this->ComputeNccOnEpipolarLine(referencePatch, PatchType::ORIGINAL, searchSubImg, matches);
 
     if (this->CorrectorActualLeftActualRight)
     {
@@ -359,7 +443,7 @@ void Vop2elMatcher::GetStereoCandidatesMatches(const cv::Mat& referencePatch,
         if (correctedPatch.size() != cv::Size(0, 0) && !(this->IsPatchVarianceZero(correctedPatch)))
         {
             std::vector<PatchWithScore> matchesPerspectiveCorrected = matches;
-            this->ComputeNccOnEpipolarLine(correctedPatch, PatchType::CORRECTED, candidatePatches, matchesPerspectiveCorrected);
+            this->ComputeNccOnEpipolarLine(correctedPatch, PatchType::CORRECTED, searchSubImg, matchesPerspectiveCorrected);
             matches.insert(matches.end(), matchesPerspectiveCorrected.begin(), matchesPerspectiveCorrected.end());
         }
     }
