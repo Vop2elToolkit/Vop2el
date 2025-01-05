@@ -177,9 +177,6 @@ void Vop2elMatcher::ComputeCandidatesOnEpipolarLine(const cv::Mat& targetImage,
         cv::Mat candidatePatch;
         cv::getRectSubPix(targetImage, patchSize, patchCenter, candidatePatch);
 
-        if (this->IsPatchVarianceZero(candidatePatch))
-            continue;
-
         if (candidatePatches.empty())
             candidatePatches = candidatePatch;
         else
