@@ -77,7 +77,7 @@ To run this project on linux, follow the steps below (Skip the initial two steps
 
 ### Notes:
 - Users should rely on parameters ini file provided in test folder.
-- Using ground plane adds additional overhead to processing time and requires precise values for normal vector and distance to ground plane, users should try running the program without it first and then test with it if the results are not satisfactory.  
+- Set use_ground_plane_correction to false in the parameters file if the robot is non-terrestrial or if the distance and normal to the ground plane are unknown.
 - To improve processing time, the simplest way is to reduce value of max_number_matches in parameters file.
 - In the estimated poses text file, each pose will be written as a single line representing a row-major 3x4 matrix.
 - The last argument mentioned in the command above is optional. When provided, it is used solely to compute translation and rotation error metrics between the estimated and ground truth poses.
