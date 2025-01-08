@@ -113,6 +113,7 @@ int main(int argc, char** argv)
 #endif
 
         // If have ground truth, compute metrics
+        totalEstimatedDistance += computedRelativeTransform.translation().norm();
         if (haveGroundTruth)
         {
             Eigen::Affine3d previousGtPose = gtPosesVector[frameIdx - 1];
@@ -125,7 +126,6 @@ int main(int argc, char** argv)
             double rotationError = angleAxisErrorRotation.angle();
 
             totalGroundTruthDistance += gtRelativeTransform.translation().norm();
-            totalEstimatedDistance += computedRelativeTransform.translation().norm();
             totalRadPerMeterError += std::abs(rotationError) / gtRelativeTransform.translation().norm();
             std::cout << "Distance error is: " << translationScaleError << " (m) | Angle error is: " << rotationError << " (rad)" << std::endl;
         }
@@ -134,12 +134,13 @@ int main(int argc, char** argv)
 
     double distanceTotalError = std::abs(totalEstimatedDistance - totalGroundTruthDistance);
     double angleTotalError = totalRadPerMeterError / static_cast<double>(numFramesToProcess);
-
     std::cout << "Total estimated distance: " << totalEstimatedDistance << std::endl;
-    std::cout << "Total ground truth distance: " << totalGroundTruthDistance << std::endl;
 
     if (haveGroundTruth)
+    {
+        std::cout << "Total ground truth distance: " << totalGroundTruthDistance << std::endl;
         std::cout << "Distance total error is: " << distanceTotalError  << " (m) | Angle total error : " << angleTotalError << " (rad)" << std::endl;
+    }
 
     // Get computed poses
     const std::vector<Eigen::Affine3d>& estimatedPoses = algorithm.GetPoses();
